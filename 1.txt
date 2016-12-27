@@ -1,0 +1,103 @@
+import re
+import aiml
+import urllib3
+from bs4 import BeautifulSoup
+from entillio_app.learn import fetch_details
+import requests
+import os
+import json
+
+sessionID = 12345
+k = aiml.Kernel()
+k.learn("entillio_app/std-startup.xml")
+k.respond("LOAD AIML B")
+
+def appendAIML(input_message, fetch_text):
+    str_formation = "<category><pattern>" + input_message.upper() + "</pattern><template>" + fetch_text + "</template></category>"
+
+
+def chat(data):
+    route = [
+        "PUNE to ST to UDZ",
+        "PUNE to GKP to UDZ",
+        "PUNE to FDB to UDZ",
+        "PUNE to KYN to UDZ",
+        "PUNE to BHL to UDZ",
+        "PUNE to KYN to UDZ",
+        "PUNE to ALD to UDZ",
+        "PUNE to MTJ to UDZ",
+        "PUNE to PNVL to UDZ",
+        "PUNE to BINA to UDZ"
+    ]
+
+    if data in ['pune','mumbai']:
+        data = "SOURCE"
+
+    elif data in ['4th April 2016',' 5th May 2016']:
+        data = "DATE"
+
+    elif data in route:
+        bot_response = 'route'
+        result = context_capture(data, bot_response)
+        return result
+
+    try:
+        bot_response = k.respond(data, sessionID)
+        chk_conditions = context_capture(data, bot_response)
+        return chk_conditions
+    except Exception as e:
+        error =  str(e)
+        return error
+
+
+def parseText(text):
+    urls = re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', text)
+    return urls
+
+
+def getContentType(pageUrl):
+    pageUrl = pageUrl[:-1]
+    http = urllib3.PoolManager()
+    page = http.request('GET', pageUrl)
+    pageHeaders = page.headers
+    contentType = pageHeaders['content-type']
+    return contentType
+
+
+def context_capture(input_message, response_text):
+    if response_text is not None:
+        if response_text == "OK. Click on the route to know more details":
+            try:
+                results = requests.get(
+                    "http://indianrail.cloudapp.net:8080/getTrainReroutes?destination=udz&journeyDate=2016-04-01&source=pune")
+                trainslist = json.loads(results.text)
+                trains_list=trainslist[:10]
+                route_list=[]
+                for train in trains_list:
+                    route_list.append(train["RouteSummary"])
+                response_text={"response":response_text, "routelist":route_list}
+
+            except Exception as e:
+                response_text = "Sorry! Due to some technical reason unable to find the result. Please try after sometime."
+            return response_text
+
+        elif response_text == "route":
+            results = requests.get(
+                "http://indianrail.cloudapp.net:8080/getTrainReroutes?destination=udz&journeyDate=2016-04-01&source=pune")
+            trainslist = json.loads(results.text)
+            trains_list = trainslist[:10]
+            train_list = []
+            route_list = []
+            for train in trains_list:
+                route_list.append(train["RouteSummary"])
+                if train["RouteSummary"] == input_message:
+                    train_list.append(train["Trains"])
+            response_text = {"response": response_text, input_message: train_list, "routelist":route_list}
+            return response_text
+
+        else:
+            response_text={"response":response_text}
+            return response_text
+    else:
+        return "Sorry! Do not have information on this"
+
